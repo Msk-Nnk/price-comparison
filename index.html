@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+ <!-- iPhone Safari用 (Webクリップアイコン) -->
+    <link rel="apple-touch-icon" href="apple-touch-icon.png" sizes="180x180">
+    <!-- Android Chrome用 (ホーム画面ショートカット/PWAアイコン) -->
+    <link rel="icon" href="android-chrome-192.png" sizes="192x192" type="image/png">
+    <!-- 共通ファビコン -->
+    <link rel="icon" href="favicon.png" sizes="any">
+    <title>単価比較ツール</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;900&display=swap');
+        
+        body {
+            font-family: 'Noto Sans JP', sans-serif;
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .bg-gradient-main {
+            background: linear-gradient(180deg, #a78bfa 0%, #f472b6 50%, #ec4899 100%);
+        }
+
+        .glass-header {
+            background: rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .item-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(5px);
+            border-radius: 1.8rem;
+            transition: all 0.3s ease;
+        }
+
+        .item-card.cheapest {
+            border: 4px solid white;
+            box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.2), 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+            transform: scale(1.02);
+        }
+
+        .input-area {
+            background: rgba(245, 243, 255, 0.6);
+            border: 1px solid rgba(237, 233, 254, 0.8);
+            border-radius: 0.75rem;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        }
+
+        .discount-panel {
+            background: linear-gradient(to right, #fff1f2, #f5f3ff);
+            border: 1px solid #ffe4e6;
+            border-radius: 1rem;
+        }
+
+        input::-webkit-outer-spin-button,
+        input::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+
+        .neon-text {
+            text-shadow: 0 0 10px rgba(255, 46, 155, 0.3);
+        }
+
+        .btn-neon {
+            box-shadow: 0 4px 15px rgba(255, 46, 155, 0.3);
+        }
+    </style>
+</head>
+<body class="bg-gradient-main min-h-screen pb-24 text-slate-800">
+
+    <div id="app" class="max-w-md mx-auto p-3">
+        <!-- Header -->
+        <header class="flex items-center justify-center gap-2 pt-2 mb-3">
+            <div class="glass-header p-2 rounded-xl">
+                <span class="text-xl font-black text-white leading-none block">¥</span>
+            </div>
+            <h1 class="text-lg font-black text-white drop-shadow-lg tracking-tight">単価比較ツール</h1>
+        </header>
+
+        <!-- Main Content -->
+        <div id="items-container" class="space-y-3">
+            <!-- Items are injected here -->
+        </div>
+
+        <!-- Add Button -->
+        <button onclick="addItem()" class="w-full py-4 mt-3 bg-white/20 border-2 border-dashed border-white/40 rounded-2xl text-white flex items-center justify-center gap-2 hover:bg-white/30 transition-all font-black uppercase text-xs tracking-widest shadow-lg active:scale-95">
+            <i class="fa-solid fa-plus"></i> 商品追加
+        </button>
+
+        <!-- Result Area -->
+        <div id="result-area" class="mt-3 hidden">
+            <!-- Comparison result injected here -->
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="fixed bottom-0 left-0 right-0 p-4 bg-white/10 backdrop-blur-xl flex justify-center z-20">
+        <button onclick="resetAll()" class="flex items-center gap-2 px-8 py-3 bg-white text-[#ff2e9b] rounded-full font-black shadow-xl active:scale-95 transition-all text-[10px] tracking-[0.2em] uppercase border-b-2 border-rose-200 btn-neon">
+            <i class="fa-solid fa-rotate"></i> RESET
+        </button>
+    </footer>
+
+    <script>
+        let items = [
+            { id: Date.now(), name: '商品A', price: '', originalPrice: '', amount: '', customDiscount: '', showDiscount: false },
+            { id: Date.now() + 1, name: '商品B', price: '', originalPrice: '', amount: '', customDiscount: '', showDiscount: false }
+        ];
+
+        function addItem() {
+            const nextLetter = String.fromCharCode(65 + items.length);
+            items.push({
+                id: Date.now(),
+                name: `商品${nextLetter}`,
+                price: '',
+                originalPrice: '',
+                amount: '',
+                customDiscount: '',
+                showDiscount: false
+            });
+            render();
+        }
+
+        function removeItem(id) {
+            if (items.length <= 2) return;
+            items = items.filter(item => item.id !== id);
+            render();
+        }
+
+        function updateItem(id, field, value) {
+            const item = items.find(i => i.id === id);
+            if (item) {
+                item[field] = value;
+                if (field === 'price') {
+                    item.originalPrice = value;
+                    item.customDiscount = '';
+                }
+            }
+            render();
+        }
+
+        function toggleDiscount(id) {
+            const item = items.find(i => i.id === id);
+            if (item) item.showDiscount = !item.showDiscount;
+            render();
+        }
+
+        function applyDiscount(id, percent) {
+            const item = items.find(i => i.id === id);
+            if (item && item.originalPrice) {
+                const base = parseFloat(item.originalPrice);
+                const p = parseFloat(percent);
+                if (isNaN(p)) {
+                    item.customDiscount = percent;
+                } else {
+                    const newPrice = base * (1 - p / 100);
+                    item.price = Math.max(0, Math.round(newPrice)).toString();
+                    item.customDiscount = percent.toString();
+                }
+            }
+            render();
+        }
+
+        function resetDiscount(id) {
+            const item = items.find(i => i.id === id);
+            if (item) {
+                item.price = item.originalPrice;
+                item.customDiscount = '';
+            }
+            render();
+        }
+
+        function resetAll() {
+            items = [
+                { id: Date.now(), name: '商品A', price: '', originalPrice: '', amount: '', customDiscount: '', showDiscount: false },
+                { id: Date.now() + 1, name: '商品B', price: '', originalPrice: '', amount: '', customDiscount: '', showDiscount: false }
+            ];
+            render();
+        }
+
+        function render() {
+            const container = document.getElementById('items-container');
+            const resultArea = document.getElementById('result-area');
+            
+            // Calculate unit prices
+            const calculated = items.map(item => {
+                const p = parseFloat(item.price);
+                const a = parseFloat(item.amount);
+                const up = (!isNaN(p) && !isNaN(a) && a > 0) ? p / a : null;
+                return { ...item, unitPrice: up };
+            });
+
+            const valid = calculated.filter(i => i.unitPrice !== null);
+            const sorted = [...valid].sort((a, b) => a.unitPrice - b.unitPrice);
+            const minPrice = sorted.length > 0 ? sorted[0].unitPrice : null;
+
+            // Render Items
+            container.innerHTML = items.map(item => {
+                const itemRes = calculated.find(i => i.id === item.id);
+                const isCheapest = minPrice !== null && itemRes.unitPrice === minPrice;
+                const isDiscounted = item.price !== item.originalPrice && item.originalPrice !== '';
+
+                return `
+                    <div class="item-card p-4 relative shadow-lg ${isCheapest ? 'cheapest' : ''}">
+                        ${isCheapest ? `
+                            <div class="absolute -top-3 left-6 bg-[#ff2e9b] text-white text-[9px] font-black px-3 py-1 rounded-full flex items-center gap-1 shadow-lg uppercase tracking-wider z-10">
+                                <i class="fa-solid fa-star text-[8px]"></i> BEST
+                            </div>
+                        ` : ''}
+
+                        <div class="flex justify-between items-center mb-3">
+                            <input type="text" value="${item.name}" onchange="updateItem(${item.id}, 'name', this.value)" 
+                                class="font-black text-lg bg-transparent border-none focus:ring-0 outline-none w-1/2 text-[#ec4899] p-0">
+                            <div class="flex items-center gap-2">
+                                <button onclick="toggleDiscount(${item.id})" 
+                                    class="p-1.5 rounded-lg transition-all shadow-md ${isDiscounted ? 'bg-[#ff2e9b] text-white ring-2 ring-[#ff2e9b]/30 scale-110' : 'bg-slate-100 text-slate-400'}">
+                                    <i class="fa-solid fa-percent text-sm"></i>
+                                </button>
+                                ${items.length > 2 ? `<button onclick="removeItem(${item.id})" class="text-slate-200 hover:text-[#ff2e9b] p-1"><i class="fa-solid fa-trash-can"></i></button>` : ''}
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-3">
+                            <div class="space-y-1">
+                                <label class="block text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">価格</label>
+                                <input type="number" inputmode="decimal" value="${item.price}" oninput="updateItem(${item.id}, 'price', this.value)" 
+                                    class="input-area w-full text-xl font-black p-3 outline-none transition-all ${isDiscounted ? 'text-[#ff2e9b] focus:ring-2 ring-rose-200' : 'text-slate-700 focus:ring-2 ring-purple-200'}">
+                            </div>
+                            <div class="space-y-1">
+                                <label class="block text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">量 (g/ml)</label>
+                                <input type="number" inputmode="decimal" value="${item.amount}" oninput="updateItem(${item.id}, 'amount', this.value)" 
+                                    class="input-area w-full text-xl font-black p-3 outline-none focus:ring-2 ring-purple-200 text-slate-700">
+                            </div>
+                        </div>
+
+                        <!-- Discount Panel -->
+                        <div class="overflow-hidden transition-all duration-300 ${item.showDiscount ? 'max-h-40 mt-3 opacity-100' : 'max-h-0 opacity-0'}">
+                            <div class="discount-panel p-3 space-y-2 shadow-inner">
+                                <div class="flex gap-1.5 flex-wrap">
+                                    ${[10, 20, 30, 50].map(v => `
+                                        <button onclick="applyDiscount(${item.id}, ${v})" 
+                                            class="flex-1 py-1.5 rounded-lg text-[10px] font-black transition-all ${item.customDiscount == v ? 'bg-[#ff2e9b] text-white shadow-md' : 'bg-white text-[#f472b6] border border-rose-100'}">
+                                            ${v === 50 ? '半額' : v + '%'}
+                                        </button>
+                                    `).join('')}
+                                    <div class="relative w-full mt-1">
+                                        <input type="number" inputmode="numeric" placeholder="自由入力" value="${item.customDiscount}" oninput="applyDiscount(${item.id}, this.value)" 
+                                            class="w-full px-3 py-1.5 pr-8 bg-white border border-rose-100 rounded-lg text-[11px] font-black outline-none text-[#ff2e9b] placeholder:text-rose-200">
+                                        <span class="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-black text-[#ff2e9b]">%</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        ${itemRes.unitPrice ? `
+                            <div class="mt-3 pt-3 border-t border-dashed border-slate-100 flex justify-between items-center">
+                                <div class="flex items-baseline gap-1">
+                                    <span class="text-[9px] font-black text-slate-300 uppercase tracking-tighter">100g単価</span>
+                                    <span class="text-lg font-mono font-black tracking-tight ${isCheapest ? 'text-[#ff2e9b]' : 'text-slate-800'}">¥${(itemRes.unitPrice * 100).toFixed(1)}</span>
+                                </div>
+                                <span class="text-[10px] font-mono font-bold text-slate-300 italic">¥${itemRes.unitPrice.toFixed(2)} /g</span>
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            }).join('');
+
+            // Render Comparison Result
+            if (sorted.length >= 2 && sorted[1].unitPrice - sorted[0].unitPrice > 0) {
+                const diff100 = (sorted[1].unitPrice - sorted[0].unitPrice) * 100;
+                const totalSaving = (sorted[1].unitPrice - sorted[0].unitPrice) * parseFloat(sorted[0].amount);
+                
+                resultArea.classList.remove('hidden');
+                resultArea.innerHTML = `
+                    <div class="bg-white rounded-[1.8rem] p-4 shadow-2xl border-t-4 border-[#ff2e9b] animate-in fade-in zoom-in-95 duration-500">
+                        <div class="flex items-center gap-3 mb-3">
+                            <div class="bg-gradient-to-br from-[#ff2e9b] to-[#a78bfa] p-2 rounded-xl">
+                                <i class="fa-solid fa-arrow-trend-down text-white text-sm"></i>
+                            </div>
+                            <p class="font-black text-sm text-slate-800 leading-tight">${sorted[0].name} が最安！</p>
+                        </div>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div class="bg-slate-50 p-3 rounded-xl border border-slate-100 text-center">
+                                <p class="text-[8px] text-slate-400 font-black uppercase mb-1 tracking-widest">節約額</p>
+                                <p class="font-mono font-black text-xl text-[#ff2e9b]"><span class="text-xs mr-0.5 italic">¥</span>${Math.round(totalSaving)}</p>
+                            </div>
+                            <div class="bg-slate-50 p-3 rounded-xl border border-slate-100 text-center">
+                                <p class="text-[8px] text-slate-400 font-black uppercase mb-1 tracking-widest">単価差</p>
+                                <p class="font-mono font-black text-xl text-indigo-500"><span class="text-xs mr-0.5 italic">¥</span>${diff100.toFixed(0)}</p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            } else {
+                resultArea.classList.add('hidden');
+            }
+        }
+
+        // Initial Render
+        render();
+    </script>
+</body>
+</html>
+
